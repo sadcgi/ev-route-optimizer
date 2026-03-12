@@ -442,5 +442,5 @@ def plan_route():
 
 
 if __name__ == "__main__":
-    print("\n  EV Route Optimizer – starting on http://localhost:5000\n")
+    print("\n  EV Route Optimiser – starting on http://localhost:5000\n")
     app.run(debug=True, port=5000)

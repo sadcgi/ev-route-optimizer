@@ -1,4 +1,4 @@
-/* ── EV Route Optimizer – Frontend ─────────────────────────────────────────── */
+/* ── EV Route Optimiser – Frontend ─────────────────────────────────────────── */
 
 'use strict';
 
