@@ -9,6 +9,33 @@ OSRM_BASE = "http://router.project-osrm.org"
 NOMINATIM_BASE = "https://nominatim.openstreetmap.org"
 USER_AGENT = "EV-Route-Optimizer/1.0 (local-dev-project)"
 
+
+# ───  EV Vehicle Dataset ─────────────────────────────────────────
+VEHICLE_PROFILES = {
+    "small_van":{
+        "name": "Small EV Van",
+        "efficiency_kwh_per_km": 0.18,
+        "battery_kwh": 50,
+    },
+    "medium_van":{
+        "name": "Medium EV Van",
+        "efficiency_kwh_per_km": 0.22,
+        "battery_kwh": 75,
+    },
+    "large_van":{
+        "name": "Large EV Van",
+        "efficiency_kwh_per_km": 0.30,
+        "battery_kwh": 100,
+    },
+    "articulated_truck":{
+        "name": "Articulated EV Truck",
+        "efficiency_kwh_per_km": 0.40,
+        "battery_kwh": 150,
+    }    
+}
+
+DEFAULT_VEHICLE_PROFILE = "medium_van"
+
 # ─── UK EV Charging Station Dataset ─────────────────────────────────────────
 # Includes motorway services, GRIDSERVE forecourts, city hubs, airports, retail
 CHARGING_STATIONS = [
@@ -219,7 +246,7 @@ def geocode_location(query):
               "countrycodes": "gb", "addressdetails": 0}
     try:
         r = requests.get(url, params=params,
-                         headers={"User-Agent": USER_AGENT}, timeout=10)
+                         headers={"User-Agent": USER_AGENT}, timeout=10, verify=False)
         results = r.json()
         if results:
             return {
@@ -231,6 +258,38 @@ def geocode_location(query):
         print(f"Geocode error: {e}")
     return None
 
+
+def get_adjusted_ascent(start_coords, end_coords):
+    """Open elevation - returns altitude of a point or None"""
+    url = f"https://api.opentopodata.org/v1/eudem25m?locations={start_coords[0]},{start_coords[1]}|{end_coords[0]},{end_coords[1]}&samples=100"
+    print(f"Request sent to: {url}")
+    try:
+        r = requests.get(url, timeout=10, verify=False, headers={"User-Agent": USER_AGENT})
+        print("Status code:", r.status_code)
+        result = r.json()
+
+        #For loop to get total change in height
+        prev_point = result["results"][0]
+        total_asc = 0
+        total_desc = 0
+        for curr_point in result["results"][1:]:
+            diff = prev_point["elevation"] - curr_point["elevation"]
+            if diff > 0:
+                total_asc += diff
+            else:
+                total_desc += diff
+            prev_point = curr_point
+
+        #Calculate effect this has on capacity via a number, maybe knock it off the range?
+        #It'll lose 15-20% on way up then won't really regen all that on the way down
+        adjusted_desc = total_desc * 0.75
+        adjusted_total = total_asc - adjusted_desc
+
+        return round(adjusted_total)/1000
+    
+    except Exception as e:
+        print(f"Altitude error: {e}")
+    return None, None
 
 def get_osrm_route(waypoints):
     """
@@ -265,6 +324,22 @@ def estimate_charge_minutes(range_km, power_kw):
     charge_kwh = battery_kwh * 0.70
     return round(charge_kwh / power_kw * 60)
 
+
+
+def get_vehicle_profile(vehicle_key):
+    return VEHICLE_PROFILES.get(vehicle_key, VEHICLE_PROFILES[DEFAULT_VEHICLE_PROFILE])
+
+
+#Estimating energy needed here, insert total altitude here
+"""
+Vehicles don't recover 100% of energy when going downhill so downhill multiplied by 70% to account for this
+Total effect will be based on the difference between the altitude gained and the altitude lost
+"""
+def estimate_energy(distance_km, vehicle_key):
+    vehicle = get_vehicle_profile(vehicle_key)
+    efficiency = vehicle["efficiency_kwh_per_km"]
+
+    return distance_km * efficiency
 
 # ─── Core Routing Algorithm ──────────────────────────────────────────────────
 
@@ -379,10 +454,15 @@ def plan_route():
     end_q      = (data.get("end")   or "").strip()
     range_km   = float(data.get("range_km", 300))
 
+
     if not start_q or not end_q:
         return jsonify({"error": "Please enter both a start and destination."}), 400
     if range_km < 30:
         return jsonify({"error": "Range must be at least 30 km."}), 400
+
+
+    # ─ Selecting Vehicle ───────────────────────────────────────────────────────
+    vehicle_key = data.get("vehicle_profile", DEFAULT_VEHICLE_PROFILE)
 
     # ── Geocode ──────────────────────────────────────────────────────────────
     start_loc = geocode_location(start_q)
@@ -397,10 +477,17 @@ def plan_route():
     start_coords = (start_loc["lat"], start_loc["lon"])
     end_coords   = (end_loc["lat"],   end_loc["lon"])
 
+    # -- Calculating altitude difference between both coordinates -------------
+    ascent_height = get_adjusted_ascent(start_coords, end_coords)
+    if ascent_height > 0:
+        adjusted_range = range_km - ascent_height
+    else:
+        adjusted_range = range_km
+
     direct_km = haversine(*start_coords, *end_coords)
 
     # ── Charging stop optimisation ───────────────────────────────────────────
-    stops, err = calculate_charging_stops(start_coords, end_coords, range_km)
+    stops, err = calculate_charging_stops(start_coords, end_coords, adjusted_range)
     if err:
         return jsonify({"error": err}), 400
 
@@ -421,7 +508,7 @@ def plan_route():
     nearby = get_nearby_stations(route["geometry"])
 
     # ── Energy estimate ──────────────────────────────────────────────────────
-    energy_kwh = round(route["distance_km"] * 0.18, 1)
+    energy_kwh = round(estimate_energy(route["distance_km"], vehicle_key), 1)
 
     return jsonify({
         "success": True,
