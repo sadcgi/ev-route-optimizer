@@ -2,12 +2,52 @@ from flask import Flask, render_template, request, jsonify
 import requests
 import math
 import time
+import os
 
 app = Flask(__name__)
 
 OSRM_BASE = "http://router.project-osrm.org"
 NOMINATIM_BASE = "https://nominatim.openstreetmap.org"
 USER_AGENT = "EV-Route-Optimizer/1.0 (local-dev-project)"
+METOFFICE_API_KEY = "eyJ4NXQjUzI1NiI6Ik5XVTVZakUxTkRjeVl6a3hZbUl4TkdSaFpqSmpOV1l6T1dGaE9XWXpNMk0yTWpRek5USm1OVEE0TXpOaU9EaG1NVFJqWVdNellXUm1ZalUyTTJJeVpBPT0iLCJraWQiOiJnYXRld2F5X2NlcnRpZmljYXRlX2FsaWFzIiwidHlwIjoiSldUIiwiYWxnIjoiUlMyNTYifQ==.eyJzdWIiOiJjYXJsb3RhbWFydGluZ2lmcmVAZ21haWwuY29tQGNhcmJvbi5zdXBlciIsImFwcGxpY2F0aW9uIjp7Im93bmVyIjoiY2FybG90YW1hcnRpbmdpZnJlQGdtYWlsLmNvbSIsInRpZXJRdW90YVR5cGUiOm51bGwsInRpZXIiOiJVbmxpbWl0ZWQiLCJuYW1lIjoic2l0ZV9zcGVjaWZpYy04ODVlMGI4YS0yNTk0LTQwZTctOTdmYy01OGE1M2ZmZGE0NGMiLCJpZCI6NDU1NzYsInV1aWQiOiIyZWQ2Yjk0Yi1hYTkxLTQ0ZmUtODhhMS1kYzI5MWEzYTVkNDIifSwiaXNzIjoiaHR0cHM6XC9cL2FwaS1tYW5hZ2VyLmFwaS1tYW5hZ2VtZW50Lm1ldG9mZmljZS5jbG91ZDo0NDNcL29hdXRoMlwvdG9rZW4iLCJ0aWVySW5mbyI6eyJ3ZGhfc2l0ZV9zcGVjaWZpY19mcmVlIjp7InRpZXJRdW90YVR5cGUiOiJyZXF1ZXN0Q291bnQiLCJncmFwaFFMTWF4Q29tcGxleGl0eSI6MCwiZ3JhcGhRTE1heERlcHRoIjowLCJzdG9wT25RdW90YVJlYWNoIjp0cnVlLCJzcGlrZUFycmVzdExpbWl0IjowLCJzcGlrZUFycmVzdFVuaXQiOiJzZWMifX0sImtleXR5cGUiOiJQUk9EVUNUSU9OIiwic3Vic2NyaWJlZEFQSXMiOlt7InN1YnNjcmliZXJUZW5hbnREb21haW4iOiJjYXJib24uc3VwZXIiLCJuYW1lIjoiU2l0ZVNwZWNpZmljRm9yZWNhc3QiLCJjb250ZXh0IjoiXC9zaXRlc3BlY2lmaWNcL3YwIiwicHVibGlzaGVyIjoiSmFndWFyX0NJIiwidmVyc2lvbiI6InYwIiwic3Vic2NyaXB0aW9uVGllciI6IndkaF9zaXRlX3NwZWNpZmljX2ZyZWUifV0sInRva2VuX3R5cGUiOiJhcGlLZXkiLCJpYXQiOjE3NzYzNTY4OTMsImp0aSI6IjMxZWY1MzE2LTIxNTQtNDcwMC1hY2RhLTA2NjBkYTE4MTdmNiJ9.IZsjGu4s2kg0tJiFSWoDIzi0IWfud4B8pt7ZmA29dMgFElS9W4MC1ySLNsI4iJ2XOteinfup_aZ9mD9r0v1hr25CHidY6dzErqIBhHKD-3MOsU2odGYSTK1IXixKn4jZGRJnwCDg_RQRiKL3EIkNw3RfQ7q9lDTR7ZuYZWwIi4hJ6W8QE1ofey3swRdUChrzzGSzvqZyCXeGmqLD4KH-bo7hV7B1E7vBOfwklYDtg21rR1x23yePybk9XqQoEaPORS_dC7g8xT_4AuFsM8vyTzzxItcs_erEBvaPqrQetyqUdyK1mGtHiN-ATjCb_MI6uAMlKt-MoppgK_KIQNfH-A=="
+
+
+# ───  EV Vehicle Dataset ─────────────────────────────────────────
+VEHICLE_PROFILES = {
+
+    "car":{
+        "name": "Electric Car",
+        "efficiency_kwh_per_km": 0.18,
+        "battery_kwh": 60,
+        "range_km": 60 / 0.18,
+    },
+    "small_van":{
+        "name": "Small EV Van",
+        "efficiency_kwh_per_km": 0.18,
+        "battery_kwh": 50,
+        "range_km": 50 / 0.18,
+    },
+    "medium_van":{
+        "name": "Medium EV Van",
+        "efficiency_kwh_per_km": 0.22,
+        "battery_kwh": 75,
+        "range_km": 75 / 0.22,              
+    },
+    "large_van":{
+        "name": "Large EV Van",
+        "efficiency_kwh_per_km": 0.30,
+        "battery_kwh": 100,
+        "range_km": 100 / 0.30,
+    },
+    "articulated_truck":{
+        "name": "Articulated EV Truck",
+        "efficiency_kwh_per_km": 0.40,
+        "battery_kwh": 150,
+        "range_km": 150 / 0.40,
+    }    
+}
+
+DEFAULT_VEHICLE_PROFILE = "car"
 
 
 # ───  EV Vehicle Dataset ─────────────────────────────────────────
@@ -303,6 +343,109 @@ def estimate_energy(distance_km, vehicle_key):
 
     return distance_km * efficiency
 
+
+def get_weather(lat, lon):
+    """
+    Fetch weather from Met Office DataHub hourly spot endpoint.
+    Returns dict with temp, wind, precip; None if API key missing or call fails.
+    """
+    if not METOFFICE_API_KEY:
+        return None
+
+    url = "https://data.hub.api.metoffice.gov.uk/sitespecific/v0/point/hourly"
+    headers = {"apikey": METOFFICE_API_KEY}
+    params = {"latitude": lat, "longitude": lon, "includeLocationName": "true"}
+
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=10)
+        data = r.json()
+
+        # Extract first timeseries entry (current/nearest hour)
+        if data.get("features") and len(data["features"]) > 0:
+            props = data["features"][0].get("properties", {})
+            ts = props.get("timeSeries", [])
+            if ts and len(ts) > 0:
+                t = ts[0]
+                temp = t.get("screenTemperature", 10.0)
+                wind_speed = t.get("windSpeed10m", 0.0)
+                wind_dir = t.get("windDirectionFrom10m", 0.0)
+                precip = t.get("precipitationRate", 0.0)
+                weather_code = t.get("significantWeatherCode", 0)
+
+                return {
+                    "temp_c": temp,
+                    "wind_speed_ms": wind_speed,
+                    "wind_dir_deg": wind_dir,
+                    "precip_mm_hr": precip,
+                    "weather_code": weather_code,
+                    "description": f"{temp:.1f}°C, {wind_speed:.1f} m/s wind, {precip:.1f} mm/hr rain",
+                }
+    except Exception as e:
+        print(f"Weather API error: {e}")
+
+    return None
+
+
+def weather_range_modifier(weather, bearing_deg):
+    """
+    Pure function. Takes weather dict + travel bearing (degrees).
+    Returns a multiplier (0.60–1.05) representing range reduction/boost.
+
+    Accounts for:
+      - headwind/tailwind effect (wind_speed_ms, wind_dir_deg vs bearing)
+      - temperature penalty (cold)
+      - precipitation/weather code penalties
+    """
+    if not weather:
+        return 1.0
+
+    modifier = 1.0
+
+    # Wind modifier
+    wind_speed = weather.get("wind_speed_ms", 0)
+    wind_dir = weather.get("wind_dir_deg", 0)
+
+    # Relative angle: 0° = headwind, 180° = tailwind, 90/270 = crosswind
+    relative_angle = (bearing_deg - wind_dir) % 360
+    if relative_angle > 180:
+        relative_angle = 360 - relative_angle
+
+    if 0 <= relative_angle <= 30 and wind_speed > 8:  # Strong headwind
+        modifier -= 0.15
+    elif 0 <= relative_angle <= 30 and wind_speed > 4:  # Moderate headwind
+        modifier -= 0.08
+    elif 150 <= relative_angle <= 180:  # Tailwind
+        modifier += 0.05
+    elif 60 <= relative_angle <= 120:  # Crosswind
+        modifier -= 0.03
+
+    # Temperature modifier
+    temp = weather.get("temp_c", 15)
+    if temp < 0:
+        modifier -= 0.25
+    elif temp < 5:
+        modifier -= 0.15
+    elif temp < 10:
+        modifier -= 0.08
+    elif temp > 20:
+        modifier -= 0.05
+
+    # Precipitation/weather code modifier
+    precip = weather.get("precip_mm_hr", 0)
+    weather_code = weather.get("weather_code", 0)
+
+    if 15 <= weather_code <= 18:  # Snow/sleet
+        modifier -= 0.12
+    elif precip > 4:  # Heavy rain
+        modifier -= 0.08
+    elif precip > 1:  # Light rain
+        modifier -= 0.04
+
+    # Clamp to [0.60, 1.05]
+    return max(0.60, min(1.05, modifier))
+
+
+
 # ─── Core Routing Algorithm ──────────────────────────────────────────────────
 
 def calculate_charging_stops(start, end, range_km):
@@ -317,14 +460,19 @@ def calculate_charging_stops(start, end, range_km):
     'progress_km' = reduction in straight-line distance to destination.
     A station must provide positive net progress to be selected.
 
-    Returns (stops_list, error_string_or_None).
+    Returns (stops_list, error_string_or_None, weather_dict, weather_modifier).
     """
     SAFETY_MARGIN = 0.18        # Keep 18 % in reserve
     DETOUR_WEIGHT  = 0.40       # Penalty factor for lateral deviation
     MAX_CHARGER_KW = 350.0
     FAST_BONUS_KM  = 20.0       # Max bonus for the fastest charger
 
-    usable_range = range_km * (1.0 - SAFETY_MARGIN)
+    # Fetch weather at start point; compute bearing for wind modifier
+    weather = get_weather(start[0], start[1])
+    bearing = math.degrees(math.atan2(end[1] - start[1], end[0] - start[0]))
+    weather_modifier = weather_range_modifier(weather, bearing)
+
+    usable_range = range_km * (1.0 - SAFETY_MARGIN) * weather_modifier
 
     current = start
     remaining = range_km          # Start fully charged
@@ -371,7 +519,7 @@ def calculate_charging_stops(start, end, range_km):
                 f"No charging stations within the usable {usable_range:.0f} km range "
                 f"from the current position. Try a vehicle with a longer range, or "
                 f"reduce the safety buffer."
-            )
+            ), weather, weather_modifier
 
         best = max(candidates, key=lambda x: x["score"])
         stops.append(best)
@@ -379,9 +527,9 @@ def calculate_charging_stops(start, end, range_km):
         current = (best["lat"], best["lon"])
 
     else:
-        return None, "Could not find a viable route within 25 charging stops."
+        return None, "Could not find a viable route within 25 charging stops.", weather, weather_modifier
 
-    return stops, None
+    return stops, None, weather, weather_modifier
 
 
 def get_nearby_stations(route_geom, max_dist_km=12):
@@ -414,7 +562,11 @@ def plan_route():
     data       = request.get_json()
     start_q    = (data.get("start") or "").strip()
     end_q      = (data.get("end")   or "").strip()
-    range_km   = float(data.get("range_km", 300))
+    range_km = float(data.get("range_km"))
+    vehicle_key = data.get("vehicle_profile", DEFAULT_VEHICLE_PROFILE) 
+    vehicle = get_vehicle_profile(vehicle_key)
+ 
+
 
 
     if not start_q or not end_q:
@@ -442,7 +594,7 @@ def plan_route():
     direct_km = haversine(*start_coords, *end_coords)
 
     # ── Charging stop optimisation ───────────────────────────────────────────
-    stops, err = calculate_charging_stops(start_coords, end_coords, range_km)
+    stops, err, weather, weather_modifier = calculate_charging_stops(start_coords, end_coords, range_km)
     if err:
         return jsonify({"error": err}), 400
 
@@ -480,9 +632,23 @@ def plan_route():
             "range_km":           range_km,
         },
         "nearby_stations": nearby,
+        "weather": {
+            "temp_c": weather["temp_c"] if weather else None,
+            "wind_speed_ms": weather["wind_speed_ms"] if weather else None,
+            "precip_mm_hr": weather["precip_mm_hr"] if weather else None,
+            "description": weather["description"] if weather else "Weather data unavailable",
+            "modifier": round(weather_modifier, 2),
+        } if weather else {
+            "temp_c": None,
+            "wind_speed_ms": None,
+            "precip_mm_hr": None,
+            "description": "Set METOFFICE_API_KEY to enable weather",
+            "modifier": 1.0,
+        },
     })
 
 
 if __name__ == "__main__":
     print("\n  EV Route Optimiser – starting on http://localhost:5000\n")
     app.run(debug=True, port=5000)
+
