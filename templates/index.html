@@ -99,6 +99,23 @@
         </div>
       </div>
 
+      <!-- Vehicle Selection -->
+      <div class="input-group">
+        <label class="input-label">
+          <span class="label-dot dot-green"></span>
+          Vehicle
+        </label>
+        <div class="input-wrap">
+          <select id="vehicle_profile" class="form-input">
+            <option value="electric_car" selected>Electric Car</option>
+            <option value="small_van">Small EV Van</option>
+            <option value="medium_van">Medium EV Van</option>
+            <option value="large_van">Large EV Van</option>
+            <option value="articulated_truck">Articulated Truck</option>
+          </select>
+        </div>
+      </div>
+
       <button id="plan-btn" class="plan-btn" onclick="planRoute()">
         <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z"/>
@@ -106,6 +123,8 @@
         Plan My Route
       </button>
     </div>
+    
+    
 
     <!-- Results Panel -->
     <div id="results-panel" class="results-panel hidden">

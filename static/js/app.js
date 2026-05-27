@@ -326,6 +326,7 @@ async function planRoute() {
   const startQ  = document.getElementById('input-start').value.trim();
   const endQ    = document.getElementById('input-end').value.trim();
   const rangeKm = +rangeSlider.value;
+  const vehicleProfile = document.getElementById('vehicle_profile').value;
 
   if (!startQ || !endQ) {
     showError('Please enter both a starting point and destination.');
@@ -346,7 +347,7 @@ async function planRoute() {
     const res = await fetch('/api/route', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ start: startQ, end: endQ, range_km: rangeKm }),
+      body:    JSON.stringify({ start: startQ, end: endQ, range_km: rangeKm, vehicle_profile: vehicleProfile}),
     });
 
     const data = await res.json();
