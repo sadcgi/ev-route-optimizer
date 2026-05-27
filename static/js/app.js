@@ -313,11 +313,42 @@ function buildTimeline(start, stops, end, stats) {
 
 // ── Populate stats cards ──────────────────────────────────────────────────────
 
-function populateStats(stats) {
+function populateStats(stats, weather) {
   document.getElementById('stat-dist').textContent   = `${stats.total_distance_km} km`;
   document.getElementById('stat-time').textContent   = formatDuration(stats.duration_hrs);
   document.getElementById('stat-stops').textContent  = stats.num_stops;
   document.getElementById('stat-energy').textContent = `${stats.energy_kwh} kWh`;
+
+  // Populate weather card
+  if (weather) {
+    const modifier = weather.modifier;
+    const rangeLoss = Math.round((1 - modifier) * 100);
+    const statWeatherEl = document.getElementById('stat-weather');
+    const statWeatherDescEl = document.getElementById('stat-weather-desc');
+    const weatherCardEl = document.getElementById('weather-card');
+
+    // Display range loss/gain
+    if (modifier > 1.0) {
+      statWeatherEl.textContent = `+${Math.round((modifier - 1) * 100)}% range`;
+    } else if (modifier < 1.0) {
+      statWeatherEl.textContent = `−${rangeLoss}% range`;
+    } else {
+      statWeatherEl.textContent = 'Neutral';
+    }
+
+    // Display description
+    statWeatherDescEl.textContent = weather.description || 'Weather data unavailable';
+
+    // Color code: green if > 0.95, amber if 0.80-0.95, red if < 0.80
+    weatherCardEl.classList.remove('weather-good', 'weather-fair', 'weather-poor');
+    if (modifier > 0.95) {
+      weatherCardEl.classList.add('weather-good');
+    } else if (modifier >= 0.80) {
+      weatherCardEl.classList.add('weather-fair');
+    } else {
+      weatherCardEl.classList.add('weather-poor');
+    }
+  }
 }
 
 // ── Main route planning function ─────────────────────────────────────────────
@@ -326,6 +357,9 @@ async function planRoute() {
   const startQ  = document.getElementById('input-start').value.trim();
   const endQ    = document.getElementById('input-end').value.trim();
   const rangeKm = +rangeSlider.value;
+  const vehicleProfile = document.getElementById('vehicle_profile').value;
+
+  
 
   if (!startQ || !endQ) {
     showError('Please enter both a starting point and destination.');
@@ -346,7 +380,7 @@ async function planRoute() {
     const res = await fetch('/api/route', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ start: startQ, end: endQ, range_km: rangeKm }),
+      body:    JSON.stringify({ start: startQ, end: endQ, range_km: rangeKm, vehicle_profile: vehicleProfile}),
     });
 
     const data = await res.json();
@@ -395,7 +429,7 @@ async function planRoute() {
     }
 
     // ── Update UI ────────────────────────────────────────────────────────────
-    populateStats(data.stats);
+    populateStats(data.stats, data.weather);
     buildTimeline(data.start, data.charging_stops, data.end, data.stats);
     document.getElementById('results-panel').classList.remove('hidden');
 
